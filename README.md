@@ -1,81 +1,109 @@
-# Crypto Bybit Trading Bot
+# Crypto Bybit TradeBot
 
-A cryptocurrency trading bot that uses Bybit's API for automated trading with AI-powered analysis.
+Automated cryptocurrency futures trading bot powered by GPT-4, built on top of the Bybit Unified Trading API.
 
-## Features
+## Overview
 
-- Real-time market data analysis
-- Automated trading on Bybit exchange
-- AI-powered market analysis using OpenAI's GPT models
-- Technical analysis with multiple indicators
-- Risk management system
-- Web-based dashboard for monitoring
-- Comprehensive logging system
+Crypto Bybit TradeBot is a Python-based automated trading system that combines real-time technical analysis with AI-driven decision making. It operates on a continuous loop: fetch market data → compute technical indicators → query GPT-4 for a trading decision → execute with risk controls. The bot supports both live trading and paper trading modes, with a Streamlit dashboard for monitoring.
 
-## Prerequisites
+### How It Works
+
+1. **Market Data** — Fetches OHLCV candlestick data from Bybit and computes technical indicators (RSI, MACD, Bollinger Bands, SMA, EMA).
+2. **AI Analysis** — Sends a structured market summary (price action, indicators, volume) to GPT-4, which returns a trading action (`long` / `short`), confidence score, and reasoning.
+3. **Trade Execution** — If confidence exceeds the configured threshold, the bot places a market order with automatic stop-loss and take-profit brackets.
+4. **Risk Management** — Position sizing is capped at 10% of available balance or the configured maximum. A minimum trade interval prevents overtrading.
+5. **Position Monitoring** — While a position is open, each loop cycle re-evaluates via GPT-4 whether to close it.
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Language** | Python 3.8+ | Core runtime |
+| **Exchange API** | [pybit](https://github.com/bybit-exchange/pybit) v5.6 | Bybit Unified Trading (linear futures, orders, positions) |
+| **AI / LLM** | [OpenAI](https://platform.openai.com/docs) v1.12 (GPT-4) | Market analysis & trade decision generation |
+| **Data** | [pandas](https://pandas.pydata.org/) v2.1, [numpy](https://numpy.org/) v1.26 | OHLCV processing & technical indicator computation |
+| **Config** | [python-dotenv](https://github.com/theskumar/python-dotenv) v1.0 | Environment-based configuration via `.env` |
+| **Dashboard** | [Streamlit](https://streamlit.io/) v1.32 | Real-time monitoring dashboard (optional) |
+| **Visualization** | [matplotlib](https://matplotlib.org/) v3.8 | Chart rendering |
+| **Technical Analysis** | Custom implementation | RSI, MACD, Bollinger Bands, SMA, EMA |
+
+## Architecture
+
+```
+crypto-bybit-tradebot/
+├── src/
+│   ├── bot.py                  # TradingBot — main loop orchestrator
+│   ├── config.py               # Legacy config (environment globals)
+│   ├── data/
+│   │   └── market_data.py      # MarketData — OHLCV fetching, indicators, position tracking
+│   ├── trading/
+│   │   └── exchange.py         # Exchange — order placement, leverage, balance
+│   ├── ai/
+│   │   └── analysis.py         # MarketAnalysis — GPT-4 integration & decision engine
+│   └── utils/
+│       ├── config.py           # Config — typed config accessor with validation
+│       └── logger.py           # Structured logging (console + file)
+├── run.py                      # Entry point with graceful shutdown (SIGINT/SIGTERM)
+├── paper_trade.py              # Paper trading mode (no real orders)
+├── test_bot.py                 # Test harness
+├── examples/
+│   └── mvp.py                  # Minimal working example
+├── requirements.txt
+└── .env.example
+```
+
+### Key Components
+
+**`TradingBot`** (`src/bot.py`) — The main orchestrator. Runs an infinite loop that:
+- Respects the minimum trade interval between actions
+- Fetches fresh OHLCV data each cycle
+- Delegates decision-making to `MarketAnalysis`
+- Routes to `_handle_existing_position()` when a position is open, or `_look_for_opportunities()` when flat
+- Sets stop-loss and take-profit orders after each entry
+
+**`MarketData`** (`src/data/market_data.py`) — Data layer:
+- Fetches kline (candlestick) data from Bybit via `pybit.HTTP`
+- Computes technical indicators inline: RSI (14), SMA (20), EMA (20), MACD (12/26/9), Bollinger Bands (20, 2σ)
+- Provides current price, position info, and account balance queries
+
+**`Exchange`** (`src/trading/exchange.py`) — Order execution:
+- Market orders, stop-loss orders, and take-profit (limit) orders
+- Position size calculation: `min(10% of wallet balance, max_position_size)`
+- Leverage setting, order cancellation, and order status queries
+
+**`MarketAnalysis`** (`src/ai/analysis.py`) — AI decision engine:
+- Formats market data into a structured prompt with price changes (1h, 4h, 24h) and all indicator readings
+- Calls OpenAI GPT-4 with a system prompt instructing it to act as a crypto trading expert
+- Parses the response (`action|confidence|reason`) and applies a confidence threshold (default: 70%)
+
+## Quick Start
+
+### Prerequisites
 
 - Python 3.8+
-- Bybit account with API access
-- OpenAI API key
-- Sufficient funds in your Bybit account
+- [Bybit account](https://www.bybit.com) with API access
+- [OpenAI API key](https://platform.openai.com)
 
-## API Key Setup
+### Installation
 
-### Bybit API Key Setup
-
-1. Log in to your Bybit account at [https://www.bybit.com](https://www.bybit.com)
-2. Go to Account Settings > API Management
-3. Click "Create New Key"
-4. Configure API key permissions:
-   - Enable "Contract" for futures trading
-   - Enable "Wallet" for balance checking
-   - Enable "Order" for order management
-   - Set IP restrictions if needed
-5. Save your API Key and Secret Key securely
-6. Add the keys to your `.env` file:
-   ```
-   BYBIT_API_KEY=your_api_key_here
-   BYBIT_SECRET_KEY=your_secret_key_here
-   ```
-
-### OpenAI API Key Setup
-
-1. Visit [https://platform.openai.com](https://platform.openai.com)
-2. Sign up or log in to your account
-3. Go to API Keys section
-4. Click "Create new secret key"
-5. Copy the generated API key
-6. Add the key to your `.env` file:
-   ```
-   OPENAI_API_KEY=your_openai_api_key_here
-   ```
-
-## Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/crypto-bybit-tradebot.git
+git clone https://github.com/scale600/crypto-bybit-tradebot.git
 cd crypto-bybit-tradebot
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
-```
-
-3. Create a `.env` file from the example:
-```bash
 cp .env.example .env
 ```
 
-4. Configure your environment variables in `.env`:
-```
-# API Keys
-OPENAI_API_KEY=your_openai_api_key_here
-BYBIT_API_KEY=your_api_key_here
-BYBIT_SECRET_KEY=your_secret_key_here
+### Configuration
 
-# Trading Configuration
+Edit `.env` with your keys and trading parameters:
+
+```env
+# Required
+OPENAI_API_KEY=sk-...
+BYBIT_API_KEY=...
+BYBIT_SECRET_KEY=...
+
+# Trading
 TRADING_PAIR=BTCUSDT
 LEVERAGE=5
 POSITION_SIZE=100
@@ -83,116 +111,44 @@ STOP_LOSS_PERCENT=0.5
 TAKE_PROFIT_PERCENT=0.5
 TIMEFRAME=15
 
-# AI Configuration
+# AI
 AI_MODEL=gpt-4
 AI_TEMPERATURE=0.7
 
 # Risk Management
 MAX_POSITION_SIZE=1000
-MIN_TRADE_INTERVAL=300  # 5 minutes in seconds
-CHECK_INTERVAL=60  # 1 minute in seconds
-CONFIDENCE_THRESHOLD=70  # Minimum confidence score to execute trades
+MIN_TRADE_INTERVAL=300
+CHECK_INTERVAL=60
+CONFIDENCE_THRESHOLD=70
 ```
 
-## Project Structure
+| Parameter | Description | Default |
+|---|---|---|
+| `TRADING_PAIR` | Bybit linear futures symbol | `BTCUSDT` |
+| `LEVERAGE` | Leverage multiplier (1–100) | `5` |
+| `POSITION_SIZE` | Default position size in USDT | `100` |
+| `TIMEFRAME` | Candle interval in minutes | `15` |
+| `CHECK_INTERVAL` | Seconds between market checks | `60` |
+| `MIN_TRADE_INTERVAL` | Minimum seconds between trades | `300` |
+| `CONFIDENCE_THRESHOLD` | Minimum GPT-4 confidence to execute (0–100) | `70` |
 
-```
-crypto-bybit-tradebot/
-├── src/
-│   ├── data/
-│   │   └── market_data.py      # Market data handling
-│   ├── trading/
-│   │   └── exchange.py         # Bybit exchange operations
-│   ├── ai/
-│   │   └── analysis.py         # AI analysis module
-│   ├── utils/
-│   │   ├── config.py           # Configuration management
-│   │   └── logger.py           # Logging utility
-│   └── main.py                 # Main application
-├── tests/                      # Test files
-├── logs/                       # Log files
-├── .env.example               # Example environment variables
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
-```
+### Run
 
-## Usage
-
-1. Start the trading bot:
 ```bash
-python src/main.py
-```
+# Live trading
+python run.py
 
-2. Monitor the dashboard:
-```bash
+# Paper trading (simulated, no real orders)
+python paper_trade.py
+
+# Dashboard (Streamlit)
 streamlit run src/dashboard.py
 ```
 
-## Configuration
+## Disclaimer
 
-### Trading Parameters
-
-- `TRADING_PAIR`: Trading pair (e.g., BTCUSDT)
-- `LEVERAGE`: Leverage multiplier (1-100)
-- `POSITION_SIZE`: Default position size in USDT
-- `STOP_LOSS_PERCENT`: Stop loss percentage
-- `TAKE_PROFIT_PERCENT`: Take profit percentage
-- `TIMEFRAME`: Candlestick timeframe (e.g., 15 for 15-minute)
-
-### Risk Management
-
-- `MAX_POSITION_SIZE`: Maximum position size in USDT
-- `MIN_TRADE_INTERVAL`: Minimum time between trades
-- `CHECK_INTERVAL`: Market check interval
-- `CONFIDENCE_THRESHOLD`: Minimum AI confidence for trades
-
-## Features in Detail
-
-### Market Data Analysis
-- Real-time price monitoring
-- Technical indicators (RSI, MACD, Bollinger Bands)
-- Volume analysis
-- Market trend detection
-
-### Trading Strategy
-- AI-powered entry/exit signals
-- Risk management rules
-- Position sizing based on account balance
-- Stop-loss and take-profit orders
-
-### AI Analysis
-- GPT-4 powered market analysis
-- Sentiment analysis
-- Pattern recognition
-- Risk assessment
-
-### Risk Management
-- Position size limits
-- Maximum drawdown protection
-- Trading frequency limits
-- Market volatility adaptation
-
-## Logging
-
-Logs are stored in the `logs/` directory with the following structure:
-- `trading.log`: Trading operations
-- `market_data.log`: Market data operations
-- `ai.log`: AI analysis operations
-- `error.log`: Error messages
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+This software is for educational purposes only. Use at your own risk. The developers are not responsible for any financial losses incurred through its use.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Disclaimer
-
-This trading bot is for educational purposes only. Use at your own risk. The developers are not responsible for any financial losses incurred through the use of this software.
-
+MIT
